@@ -1,6 +1,8 @@
 Changelog
 =========
 
+<<<<<<< HEAD
+=======
 .. _v37-0-0:
 
 37.0.0 - `main`_
@@ -1693,6 +1695,7 @@ Changelog
 
 .. _v0-6-1:
 
+>>>>>>> master
 0.6.1 - 2014-10-15
 ~~~~~~~~~~~~~~~~~~
 
@@ -1704,9 +1707,12 @@ Changelog
   backend. This works around an issue in 1.0.0, 1.0.0a, and 1.0.0b where
   truncation was not implemented.
 
+<<<<<<< HEAD
+=======
 
 .. _v0-6:
 
+>>>>>>> master
 0.6 - 2014-09-29
 ~~~~~~~~~~~~~~~~
 
