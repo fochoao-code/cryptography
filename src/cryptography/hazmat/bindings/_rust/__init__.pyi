@@ -20,6 +20,7 @@ class FixedPool(typing.Generic[T]):
     def __init__(
         self,
         create: typing.Callable[[], T],
+        destroy: typing.Callable[[T], None],
     ) -> None: ...
     def acquire(self) -> PoolAcquisition[T]: ...
 

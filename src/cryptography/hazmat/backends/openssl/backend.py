@@ -186,6 +186,7 @@ class Backend:
         self._binding = binding.Binding()
         self._ffi = self._binding.ffi
         self._lib = self._binding.lib
+        self._rsa_skip_check_key = False
         self._fips_enabled = self._is_fips_enabled()
 
         self._cipher_registry = {}
@@ -202,10 +203,8 @@ class Backend:
             self._dh_types.append(self._lib.EVP_PKEY_DHX)
 
     def __repr__(self) -> str:
-        return "<OpenSSLBackend(version: {}, FIPS: {}, Legacy: {})>".format(
-            self.openssl_version_text(),
-            self._fips_enabled,
-            self._binding._legacy_provider_loaded,
+        return "<OpenSSLBackend(version: {}, FIPS: {})>".format(
+            self.openssl_version_text(), self._fips_enabled
         )
 
     def openssl_assert(
@@ -404,6 +403,26 @@ class Backend:
         self.register_cipher_adapter(
             TripleDES, ECB, GetCipherByName("des-ede3")
         )
+        for mode_cls in [CBC, CFB, OFB, ECB]:
+            self.register_cipher_adapter(
+                _BlowfishInternal, mode_cls, GetCipherByName("bf-{mode.name}")
+            )
+        for mode_cls in [CBC, CFB, OFB, ECB]:
+            self.register_cipher_adapter(
+                _SEEDInternal, mode_cls, GetCipherByName("seed-{mode.name}")
+            )
+        for cipher_cls, mode_cls in itertools.product(
+            [_CAST5Internal, _IDEAInternal],
+            [CBC, OFB, CFB, ECB],
+        ):
+            self.register_cipher_adapter(
+                cipher_cls,
+                mode_cls,
+                GetCipherByName("{cipher.name}-{mode.name}"),
+            )
+        self.register_cipher_adapter(ARC4, type(None), GetCipherByName("rc4"))
+        # We don't actually support RC2, this is just used by some tests.
+        self.register_cipher_adapter(_RC2, type(None), GetCipherByName("rc2"))
         self.register_cipher_adapter(
             ChaCha20, type(None), GetCipherByName("chacha20")
         )
@@ -411,42 +430,6 @@ class Backend:
         for mode_cls in [ECB, CBC, OFB, CFB, CTR]:
             self.register_cipher_adapter(
                 SM4, mode_cls, GetCipherByName("sm4-{mode.name}")
-            )
-        # Don't register legacy ciphers if they're unavailable. Hypothetically
-        # this wouldn't be necessary because we test availability by seeing if
-        # we get an EVP_CIPHER * in the _CipherContext __init__, but OpenSSL 3
-        # will return a valid pointer even though the cipher is unavailable.
-        if (
-            self._binding._legacy_provider_loaded
-            or not self._lib.CRYPTOGRAPHY_OPENSSL_300_OR_GREATER
-        ):
-            for mode_cls in [CBC, CFB, OFB, ECB]:
-                self.register_cipher_adapter(
-                    _BlowfishInternal,
-                    mode_cls,
-                    GetCipherByName("bf-{mode.name}"),
-                )
-            for mode_cls in [CBC, CFB, OFB, ECB]:
-                self.register_cipher_adapter(
-                    _SEEDInternal,
-                    mode_cls,
-                    GetCipherByName("seed-{mode.name}"),
-                )
-            for cipher_cls, mode_cls in itertools.product(
-                [_CAST5Internal, _IDEAInternal],
-                [CBC, OFB, CFB, ECB],
-            ):
-                self.register_cipher_adapter(
-                    cipher_cls,
-                    mode_cls,
-                    GetCipherByName("{cipher.name}-{mode.name}"),
-                )
-            self.register_cipher_adapter(
-                ARC4, type(None), GetCipherByName("rc4")
-            )
-            # We don't actually support RC2, this is just used by some tests.
-            self.register_cipher_adapter(
-                _RC2, type(None), GetCipherByName("rc2")
             )
 
     def create_symmetric_encryption_ctx(
@@ -541,9 +524,8 @@ class Backend:
         self.openssl_assert(res == 1)
         evp_pkey = self._rsa_cdata_to_evp_pkey(rsa_cdata)
 
-        # We can skip RSA key validation here since we just generated the key
         return _RSAPrivateKey(
-            self, rsa_cdata, evp_pkey, unsafe_skip_rsa_key_validation=True
+            self, rsa_cdata, evp_pkey, self._rsa_skip_check_key
         )
 
     def generate_rsa_parameters_supported(
@@ -556,9 +538,7 @@ class Backend:
         )
 
     def load_rsa_private_numbers(
-        self,
-        numbers: rsa.RSAPrivateNumbers,
-        unsafe_skip_rsa_key_validation: bool,
+        self, numbers: rsa.RSAPrivateNumbers
     ) -> rsa.RSAPrivateKey:
         rsa._check_private_key_components(
             numbers.p,
@@ -590,10 +570,7 @@ class Backend:
         evp_pkey = self._rsa_cdata_to_evp_pkey(rsa_cdata)
 
         return _RSAPrivateKey(
-            self,
-            rsa_cdata,
-            evp_pkey,
-            unsafe_skip_rsa_key_validation=unsafe_skip_rsa_key_validation,
+            self, rsa_cdata, evp_pkey, self._rsa_skip_check_key
         )
 
     def load_rsa_public_numbers(
@@ -658,9 +635,7 @@ class Backend:
         bio_data = self._ffi.buffer(buf[0], buf_len)[:]
         return bio_data
 
-    def _evp_pkey_to_private_key(
-        self, evp_pkey, unsafe_skip_rsa_key_validation: bool
-    ) -> PRIVATE_KEY_TYPES:
+    def _evp_pkey_to_private_key(self, evp_pkey) -> PRIVATE_KEY_TYPES:
         """
         Return the appropriate type of PrivateKey given an evp_pkey cdata
         pointer.
@@ -673,10 +648,7 @@ class Backend:
             self.openssl_assert(rsa_cdata != self._ffi.NULL)
             rsa_cdata = self._ffi.gc(rsa_cdata, self._lib.RSA_free)
             return _RSAPrivateKey(
-                self,
-                rsa_cdata,
-                evp_pkey,
-                unsafe_skip_rsa_key_validation=unsafe_skip_rsa_key_validation,
+                self, rsa_cdata, evp_pkey, self._rsa_skip_check_key
             )
         elif (
             key_type == self._lib.EVP_PKEY_RSA_PSS
@@ -695,9 +667,7 @@ class Backend:
             res = self._lib.i2d_RSAPrivateKey_bio(bio, rsa_cdata)
             self.openssl_assert(res == 1)
             return self.load_der_private_key(
-                self._read_mem_bio(bio),
-                password=None,
-                unsafe_skip_rsa_key_validation=unsafe_skip_rsa_key_validation,
+                self._read_mem_bio(bio), password=None
             )
         elif key_type == self._lib.EVP_PKEY_DSA:
             dsa_cdata = self._lib.EVP_PKEY_get1_DSA(evp_pkey)
@@ -715,15 +685,16 @@ class Backend:
             dh_cdata = self._ffi.gc(dh_cdata, self._lib.DH_free)
             return _DHPrivateKey(self, dh_cdata, evp_pkey)
         elif key_type == getattr(self._lib, "EVP_PKEY_ED25519", None):
-            # EVP_PKEY_ED25519 is not present in CRYPTOGRAPHY_IS_LIBRESSL
+            # EVP_PKEY_ED25519 is not present in OpenSSL < 1.1.1
             return _Ed25519PrivateKey(self, evp_pkey)
         elif key_type == getattr(self._lib, "EVP_PKEY_X448", None):
-            # EVP_PKEY_X448 is not present in CRYPTOGRAPHY_IS_LIBRESSL
+            # EVP_PKEY_X448 is not present in OpenSSL < 1.1.1
             return _X448PrivateKey(self, evp_pkey)
-        elif key_type == self._lib.EVP_PKEY_X25519:
+        elif key_type == getattr(self._lib, "EVP_PKEY_X25519", None):
+            # EVP_PKEY_X25519 is not present in OpenSSL < 1.1.0
             return _X25519PrivateKey(self, evp_pkey)
         elif key_type == getattr(self._lib, "EVP_PKEY_ED448", None):
-            # EVP_PKEY_ED448 is not present in CRYPTOGRAPHY_IS_LIBRESSL
+            # EVP_PKEY_ED448 is not present in OpenSSL < 1.1.1
             return _Ed448PrivateKey(self, evp_pkey)
         else:
             raise UnsupportedAlgorithm("Unsupported key type.")
@@ -772,15 +743,16 @@ class Backend:
             dh_cdata = self._ffi.gc(dh_cdata, self._lib.DH_free)
             return _DHPublicKey(self, dh_cdata, evp_pkey)
         elif key_type == getattr(self._lib, "EVP_PKEY_ED25519", None):
-            # EVP_PKEY_ED25519 is not present in CRYPTOGRAPHY_IS_LIBRESSL
+            # EVP_PKEY_ED25519 is not present in OpenSSL < 1.1.1
             return _Ed25519PublicKey(self, evp_pkey)
         elif key_type == getattr(self._lib, "EVP_PKEY_X448", None):
-            # EVP_PKEY_X448 is not present in CRYPTOGRAPHY_IS_LIBRESSL
+            # EVP_PKEY_X448 is not present in OpenSSL < 1.1.1
             return _X448PublicKey(self, evp_pkey)
-        elif key_type == self._lib.EVP_PKEY_X25519:
+        elif key_type == getattr(self._lib, "EVP_PKEY_X25519", None):
+            # EVP_PKEY_X25519 is not present in OpenSSL < 1.1.0
             return _X25519PublicKey(self, evp_pkey)
         elif key_type == getattr(self._lib, "EVP_PKEY_ED448", None):
-            # EVP_PKEY_ED448 is not present in CRYPTOGRAPHY_IS_LIBRESSL
+            # EVP_PKEY_X25519 is not present in OpenSSL < 1.1.1
             return _Ed448PublicKey(self, evp_pkey)
         else:
             raise UnsupportedAlgorithm("Unsupported key type.")
@@ -944,16 +916,13 @@ class Backend:
         return _CMACContext(self, algorithm)
 
     def load_pem_private_key(
-        self,
-        data: bytes,
-        password: typing.Optional[bytes],
-        unsafe_skip_rsa_key_validation: bool,
+        self, data: bytes, password: typing.Optional[bytes]
     ) -> PRIVATE_KEY_TYPES:
         return self._load_key(
             self._lib.PEM_read_bio_PrivateKey,
+            self._evp_pkey_to_private_key,
             data,
             password,
-            unsafe_skip_rsa_key_validation,
         )
 
     def load_pem_public_key(self, data: bytes) -> PUBLIC_KEY_TYPES:
@@ -1011,10 +980,7 @@ class Backend:
             self._handle_key_loading_error()
 
     def load_der_private_key(
-        self,
-        data: bytes,
-        password: typing.Optional[bytes],
-        unsafe_skip_rsa_key_validation: bool,
+        self, data: bytes, password: typing.Optional[bytes]
     ) -> PRIVATE_KEY_TYPES:
         # OpenSSL has a function called d2i_AutoPrivateKey that in theory
         # handles this automatically, however it doesn't handle encrypted
@@ -1023,22 +989,25 @@ class Backend:
         bio_data = self._bytes_to_bio(data)
         key = self._evp_pkey_from_der_traditional_key(bio_data, password)
         if key:
-            return self._evp_pkey_to_private_key(
-                key, unsafe_skip_rsa_key_validation
-            )
+            return self._evp_pkey_to_private_key(key)
         else:
             # Finally we try to load it with the method that handles encrypted
             # PKCS8 properly.
             return self._load_key(
                 self._lib.d2i_PKCS8PrivateKey_bio,
+                self._evp_pkey_to_private_key,
                 data,
                 password,
-                unsafe_skip_rsa_key_validation,
             )
 
     def _evp_pkey_from_der_traditional_key(self, bio_data, password):
         key = self._lib.d2i_PrivateKey_bio(bio_data.bio, self._ffi.NULL)
         if key != self._ffi.NULL:
+            # In OpenSSL 3.0.0-alpha15 there exist scenarios where the key will
+            # successfully load but errors are still put on the stack. Tracked
+            # as https://github.com/openssl/openssl/issues/14996
+            self._consume_errors()
+
             key = self._ffi.gc(key, self._lib.EVP_PKEY_free)
             if password is not None:
                 raise TypeError(
@@ -1084,7 +1053,9 @@ class Backend:
             self._consume_errors()
             res = self._lib.BIO_reset(mem_bio.bio)
             self.openssl_assert(res == 1)
-            dh_cdata = self._lib.d2i_DHxparams_bio(mem_bio.bio, self._ffi.NULL)
+            dh_cdata = self._lib.Cryptography_d2i_DHxparams_bio(
+                mem_bio.bio, self._ffi.NULL
+            )
             if dh_cdata != self._ffi.NULL:
                 dh_cdata = self._ffi.gc(dh_cdata, self._lib.DH_free)
                 return _DHParameters(self, dh_cdata)
@@ -1113,6 +1084,14 @@ class Backend:
         x509_req = self._ffi.gc(x509_req, self._lib.X509_REQ_free)
         return x509_req
 
+    def _ossl2csr(
+        self, x509_req: typing.Any
+    ) -> x509.CertificateSigningRequest:
+        bio = self._create_mem_bio_gc()
+        res = self._lib.i2d_X509_REQ_bio(bio, x509_req)
+        self.openssl_assert(res == 1)
+        return rust_x509.load_der_x509_csr(self._read_mem_bio(bio))
+
     def _crl2ossl(self, crl: x509.CertificateRevocationList) -> typing.Any:
         data = crl.public_bytes(serialization.Encoding.DER)
         mem_bio = self._bytes_to_bio(data)
@@ -1120,6 +1099,14 @@ class Backend:
         self.openssl_assert(x509_crl != self._ffi.NULL)
         x509_crl = self._ffi.gc(x509_crl, self._lib.X509_CRL_free)
         return x509_crl
+
+    def _ossl2crl(
+        self, x509_crl: typing.Any
+    ) -> x509.CertificateRevocationList:
+        bio = self._create_mem_bio_gc()
+        res = self._lib.i2d_X509_CRL_bio(bio, x509_crl)
+        self.openssl_assert(res == 1)
+        return rust_x509.load_der_x509_crl(self._read_mem_bio(bio))
 
     def _crl_is_signature_valid(
         self,
@@ -1166,9 +1153,7 @@ class Backend:
         if self._lib.EVP_PKEY_cmp(key1._evp_pkey, key2._evp_pkey) != 1:
             raise ValueError("Keys do not correspond")
 
-    def _load_key(
-        self, openssl_read_func, data, password, unsafe_skip_rsa_key_validation
-    ):
+    def _load_key(self, openssl_read_func, convert_func, data, password):
         mem_bio = self._bytes_to_bio(data)
 
         userdata = self._ffi.new("CRYPTOGRAPHY_PASSWORD_DATA *")
@@ -1203,6 +1188,11 @@ class Backend:
             else:
                 self._handle_key_loading_error()
 
+        # In OpenSSL 3.0.0-alpha15 there exist scenarios where the key will
+        # successfully load but errors are still put on the stack. Tracked
+        # as https://github.com/openssl/openssl/issues/14996
+        self._consume_errors()
+
         evp_pkey = self._ffi.gc(evp_pkey, self._lib.EVP_PKEY_free)
 
         if password is not None and userdata.called == 0:
@@ -1214,9 +1204,7 @@ class Backend:
             password is not None and userdata.called == 1
         ) or password is None
 
-        return self._evp_pkey_to_private_key(
-            evp_pkey, unsafe_skip_rsa_key_validation
-        )
+        return convert_func(evp_pkey)
 
     def _handle_key_loading_error(self) -> typing.NoReturn:
         errors = self._consume_errors()
@@ -1733,9 +1721,7 @@ class Backend:
         res = self._lib.DH_generate_parameters_ex(
             dh_param_cdata, key_size, generator, self._ffi.NULL
         )
-        if res != 1:
-            errors = self._consume_errors_with_text()
-            raise ValueError("Unable to generate DH parameters", errors)
+        self.openssl_assert(res == 1)
 
         return _DHParameters(self, dh_param_cdata)
 
@@ -1891,8 +1877,8 @@ class Backend:
         return self._lib.Cryptography_HAS_EVP_PKEY_DHX == 1
 
     def x25519_load_public_bytes(self, data: bytes) -> x25519.X25519PublicKey:
-        # If/when LibreSSL adds support for EVP_PKEY_new_raw_public_key we
-        # can switch to it (Cryptography_HAS_RAW_KEY)
+        # When we drop support for CRYPTOGRAPHY_OPENSSL_LESS_THAN_111 we can
+        # switch this to EVP_PKEY_new_raw_public_key
         if len(data) != 32:
             raise ValueError("An X25519 public key is 32 bytes long")
 
@@ -1908,8 +1894,8 @@ class Backend:
     def x25519_load_private_bytes(
         self, data: bytes
     ) -> x25519.X25519PrivateKey:
-        # If/when LibreSSL adds support for EVP_PKEY_new_raw_private_key we
-        # can switch to it (Cryptography_HAS_RAW_KEY) drop the
+        # When we drop support for CRYPTOGRAPHY_OPENSSL_LESS_THAN_111 we can
+        # switch this to EVP_PKEY_new_raw_private_key and drop the
         # zeroed_bytearray garbage.
         # OpenSSL only has facilities for loading PKCS8 formatted private
         # keys using the algorithm identifiers specified in
@@ -1994,7 +1980,7 @@ class Backend:
         if self._fips_enabled:
             return False
         return (
-            not self._lib.CRYPTOGRAPHY_IS_LIBRESSL
+            not self._lib.CRYPTOGRAPHY_OPENSSL_LESS_THAN_111
             and not self._lib.CRYPTOGRAPHY_IS_BORINGSSL
         )
 
@@ -2204,11 +2190,14 @@ class Backend:
             res = self._lib.PKCS12_parse(
                 p12, password_buf, evp_pkey_ptr, x509_ptr, sk_x509_ptr
             )
-        # OpenSSL 3.0.6 leaves errors on the stack even in success, so
-        # we consume all errors unconditionally.
-        # https://github.com/openssl/openssl/issues/19389
-        self._consume_errors()
+
+        # Workaround for
+        # https://github.com/libressl-portable/portable/issues/659
+        if self._lib.CRYPTOGRAPHY_LIBRESSL_LESS_THAN_340:
+            self._consume_errors()
+
         if res == 0:
+            self._consume_errors()
             raise ValueError("Invalid password or PKCS12 data")
 
         cert = None
@@ -2217,11 +2206,7 @@ class Backend:
 
         if evp_pkey_ptr[0] != self._ffi.NULL:
             evp_pkey = self._ffi.gc(evp_pkey_ptr[0], self._lib.EVP_PKEY_free)
-            # We don't support turning off RSA key validation when loading
-            # PKCS12 keys
-            key = self._evp_pkey_to_private_key(
-                evp_pkey, unsafe_skip_rsa_key_validation=False
-            )
+            key = self._evp_pkey_to_private_key(evp_pkey)
 
         if x509_ptr[0] != self._ffi.NULL:
             x509 = self._ffi.gc(x509_ptr[0], self._lib.X509_free)
@@ -2479,12 +2464,61 @@ class Backend:
             x509 = self._lib.sk_X509_value(sk_x509, i)
             self.openssl_assert(x509 != self._ffi.NULL)
             res = self._lib.X509_up_ref(x509)
-            self.openssl_assert(res == 1)
+            # When OpenSSL is less than 1.1.0 up_ref returns the current
+            # refcount. On 1.1.0+ it returns 1 for success.
+            self.openssl_assert(res >= 1)
             x509 = self._ffi.gc(x509, self._lib.X509_free)
             cert = self._ossl2cert(x509)
             certs.append(cert)
 
         return certs
+
+    def pkcs7_serialize_certificates(
+        self,
+        certs: typing.List[x509.Certificate],
+        encoding: serialization.Encoding,
+    ):
+        certs = list(certs)
+        if not certs or not all(
+            isinstance(cert, x509.Certificate) for cert in certs
+        ):
+            raise TypeError("certs must be a list of certs with length >= 1")
+
+        if encoding not in (
+            serialization.Encoding.PEM,
+            serialization.Encoding.DER,
+        ):
+            raise TypeError("encoding must DER or PEM from the Encoding enum")
+
+        certs_sk = self._lib.sk_X509_new_null()
+        certs_sk = self._ffi.gc(certs_sk, self._lib.sk_X509_free)
+        # This list is to keep the x509 values alive until end of function
+        ossl_certs = []
+        for cert in certs:
+            ossl_cert = self._cert2ossl(cert)
+            ossl_certs.append(ossl_cert)
+            res = self._lib.sk_X509_push(certs_sk, ossl_cert)
+            self.openssl_assert(res >= 1)
+        # We use PKCS7_sign here because it creates the PKCS7 and PKCS7_SIGNED
+        # structures for us rather than requiring manual assignment.
+        p7 = self._lib.PKCS7_sign(
+            self._ffi.NULL,
+            self._ffi.NULL,
+            certs_sk,
+            self._ffi.NULL,
+            self._lib.PKCS7_PARTIAL,
+        )
+        bio_out = self._create_mem_bio_gc()
+        if encoding is serialization.Encoding.PEM:
+            res = self._lib.PEM_write_bio_PKCS7_stream(
+                bio_out, p7, self._ffi.NULL, 0
+            )
+        else:
+            assert encoding is serialization.Encoding.DER
+            res = self._lib.i2d_PKCS7_bio(bio_out, p7)
+
+        self.openssl_assert(res == 1)
+        return self._read_mem_bio(bio_out)
 
     def pkcs7_sign(
         self,

@@ -354,19 +354,12 @@ class RSAPrivateNumbers:
     def public_numbers(self) -> "RSAPublicNumbers":
         return self._public_numbers
 
-    def private_key(
-        self,
-        backend: typing.Any = None,
-        *,
-        unsafe_skip_rsa_key_validation: bool = False,
-    ) -> RSAPrivateKey:
+    def private_key(self, backend: typing.Any = None) -> RSAPrivateKey:
         from cryptography.hazmat.backends.openssl.backend import (
             backend as ossl,
         )
 
-        return ossl.load_rsa_private_numbers(
-            self, unsafe_skip_rsa_key_validation
-        )
+        return ossl.load_rsa_private_numbers(self)
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, RSAPrivateNumbers):
