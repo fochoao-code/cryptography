@@ -16,6 +16,7 @@ typedef ... EVP_MD_CTX;
 typedef ... EVP_PKEY;
 typedef ... EVP_PKEY_CTX;
 static const int EVP_PKEY_RSA;
+static const int EVP_PKEY_RSA_PSS;
 static const int EVP_PKEY_DSA;
 static const int EVP_PKEY_DH;
 static const int EVP_PKEY_DHX;
@@ -33,7 +34,6 @@ static const int EVP_CTRL_AEAD_SET_TAG;
 static const int Cryptography_HAS_SCRYPT;
 static const int Cryptography_HAS_EVP_PKEY_DHX;
 static const int Cryptography_HAS_EVP_PKEY_get_set_tls_encodedpoint;
-static const int Cryptography_HAS_ONESHOT_EVP_DIGEST_SIGN_VERIFY;
 static const long Cryptography_HAS_RAW_KEY;
 static const long Cryptography_HAS_EVP_DIGESTFINAL_XOF;
 static const long Cryptography_HAS_300_FIPS;
@@ -128,18 +128,15 @@ int EVP_PKEY_id(const EVP_PKEY *);
 EVP_MD_CTX *EVP_MD_CTX_new(void);
 void EVP_MD_CTX_free(EVP_MD_CTX *);
 
-/* Added in 1.1.1 */
 int EVP_DigestSign(EVP_MD_CTX *, unsigned char *, size_t *,
                    const unsigned char *, size_t);
 int EVP_DigestVerify(EVP_MD_CTX *, const unsigned char *, size_t,
                      const unsigned char *, size_t);
-/* Added in 1.1.0 */
 size_t EVP_PKEY_get1_tls_encodedpoint(EVP_PKEY *, unsigned char **);
 int EVP_PKEY_set1_tls_encodedpoint(EVP_PKEY *, const unsigned char *,
                                    size_t);
 
-/* EVP_PKEY * became const in 1.1.0 */
-int EVP_PKEY_bits(EVP_PKEY *);
+int EVP_PKEY_bits(const EVP_PKEY *);
 
 void OpenSSL_add_all_algorithms(void);
 int EVP_PKEY_assign_RSA(EVP_PKEY *, RSA *);
@@ -202,18 +199,7 @@ int (*EVP_PKEY_set1_tls_encodedpoint)(EVP_PKEY *, const unsigned char *,
                                       size_t) = NULL;
 #endif
 
-#if CRYPTOGRAPHY_LIBRESSL_LESS_THAN_340 || \
-    (CRYPTOGRAPHY_OPENSSL_LESS_THAN_111 && !CRYPTOGRAPHY_IS_LIBRESSL)
-static const long Cryptography_HAS_ONESHOT_EVP_DIGEST_SIGN_VERIFY = 0;
-int (*EVP_DigestSign)(EVP_MD_CTX *, unsigned char *, size_t *,
-                      const unsigned char *tbs, size_t) = NULL;
-int (*EVP_DigestVerify)(EVP_MD_CTX *, const unsigned char *, size_t,
-                        const unsigned char *, size_t) = NULL;
-#else
-static const long Cryptography_HAS_ONESHOT_EVP_DIGEST_SIGN_VERIFY = 1;
-#endif
-
-#if CRYPTOGRAPHY_OPENSSL_LESS_THAN_111
+#if CRYPTOGRAPHY_IS_LIBRESSL
 static const long Cryptography_HAS_RAW_KEY = 0;
 static const long Cryptography_HAS_EVP_DIGESTFINAL_XOF = 0;
 int (*EVP_DigestFinalXOF)(EVP_MD_CTX *, unsigned char *, size_t) = NULL;
@@ -230,7 +216,7 @@ static const long Cryptography_HAS_RAW_KEY = 1;
 static const long Cryptography_HAS_EVP_DIGESTFINAL_XOF = 1;
 #endif
 
-/* OpenSSL 1.1.0+ does this define for us, but if not present we'll do it */
+/* These defines are needed for CRYPTOGRAPHY_LIBRESSL_LESS_THAN_350 */
 #if !defined(EVP_CTRL_AEAD_SET_IVLEN)
 # define EVP_CTRL_AEAD_SET_IVLEN EVP_CTRL_GCM_SET_IVLEN
 #endif

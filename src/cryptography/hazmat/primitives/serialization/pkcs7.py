@@ -6,6 +6,7 @@ import typing
 
 from cryptography import utils
 from cryptography import x509
+from cryptography.hazmat.bindings._rust import pkcs7 as rust_pkcs7
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec, rsa
 from cryptography.utils import _check_byteslike
@@ -21,6 +22,13 @@ def load_der_pkcs7_certificates(data: bytes) -> typing.List[x509.Certificate]:
     from cryptography.hazmat.backends.openssl.backend import backend
 
     return backend.load_der_pkcs7_certificates(data)
+
+
+def serialize_certificates(
+    certs: typing.List[x509.Certificate],
+    encoding: serialization.Encoding,
+) -> bytes:
+    return rust_pkcs7.serialize_certificates(certs, encoding)
 
 
 _ALLOWED_PKCS7_HASH_TYPES = typing.Union[
@@ -45,8 +53,19 @@ class PKCS7Options(utils.Enum):
     NoCerts = "Don't embed signer certificate"
 
 
-class PKCS7SignatureBuilder(object):
-    def __init__(self, data=None, signers=[], additional_certs=[]):
+class PKCS7SignatureBuilder:
+    def __init__(
+        self,
+        data: typing.Optional[bytes] = None,
+        signers: typing.List[
+            typing.Tuple[
+                x509.Certificate,
+                _ALLOWED_PRIVATE_KEY_TYPES,
+                _ALLOWED_PKCS7_HASH_TYPES,
+            ]
+        ] = [],
+        additional_certs: typing.List[x509.Certificate] = [],
+    ):
         self._data = data
         self._signers = signers
         self._additional_certs = additional_certs

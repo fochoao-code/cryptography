@@ -1,12 +1,167 @@
 Changelog
 =========
 
-.. _v37-0-0:
+.. _v39-0-0:
 
-37.0.0 - `main`_
+39.0.0 - `main`_
 ~~~~~~~~~~~~~~~~
 
 .. note:: This version is not yet released and is under active development.
+
+* **BACKWARDS INCOMPATIBLE:** Support for OpenSSL 1.1.0 has been removed.
+  Users on older version of OpenSSL will need to upgrade.
+* **BACKWARDS INCOMPATIBLE:** Dropped support for LibreSSL < 3.4. The new
+  minimum LibreSSL version is 3.4.0. Going forward our policy is to support
+  versions of LibreSSL that are available in versions of OpenBSD that are
+  still receiving security support.
+* **BACKWARDS INCOMPATIBLE:** Removed the ``encode_point`` and
+  ``from_encoded_point`` methods on
+  :class:`~cryptography.hazmat.primitives.asymmetric.ec.EllipticCurvePublicNumbers`,
+  which had been deprecated for several years.
+  :meth:`~cryptography.hazmat.primitives.asymmetric.ec.EllipticCurvePublicKey.public_bytes`
+  and
+  :meth:`~cryptography.hazmat.primitives.asymmetric.ec.EllipticCurvePublicKey.from_encoded_point`
+  should be used instead.
+* **BACKWARDS INCOMPATIBLE:** Support for using MD5 or SHA1 in
+  :class:`~cryptography.x509.CertificateBuilder` and
+  other X.509 builders has been removed.
+* Added support for
+  :ref:`disabling the legacy provider in OpenSSL 3.0.x<legacy-provider>`.
+* Added support for disabling RSA key validation checks when loading RSA
+  keys via
+  :func:`~cryptography.hazmat.primitives.serialization.load_pem_private_key`,
+  :func:`~cryptography.hazmat.primitives.serialization.load_der_private_key`,
+  and
+  :meth:`~cryptography.hazmat.primitives.asymmetric.rsa.RSAPrivateNumbers.private_key`.
+  This speeds up key loading but is :term:`unsafe` if you are loading potentially
+  attacker supplied keys.
+* Significantly improved performance for
+  :class:`~cryptography.hazmat.primitives.ciphers.aead.ChaCha20Poly1305`
+  when repeatedly calling ``encrypt`` or ``decrypt`` with the same key.
+* Added support for creating OCSP requests with precomputed hashes using
+  :meth:`~cryptography.x509.ocsp.OCSPRequestBuilder.add_certificate_by_hash`.
+
+.. _v38-0-2:
+
+38.0.2 - 2022-10-11 (YANKED)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. attention::
+
+    This release was subsequently yanked from PyPI due to a regression in OpenSSL.
+
+* Updated Windows, macOS, and Linux wheels to be compiled with OpenSSL 3.0.6.
+
+
+.. _v38-0-1:
+
+38.0.1 - 2022-09-07
+~~~~~~~~~~~~~~~~~~~
+
+* Fixed parsing TLVs in ASN.1 with length greater than 65535 bytes (typically
+  seen in large CRLs).
+
+.. _v38-0-0:
+
+38.0.0 - 2022-09-06
+~~~~~~~~~~~~~~~~~~~
+
+* Final deprecation of OpenSSL 1.1.0. The next release of ``cryptography``
+  will drop support.
+* We no longer ship ``manylinux2010`` wheels. Users should upgrade to the
+  latest ``pip`` to ensure this doesn't cause issues downloading wheels on
+  their platform. We now ship ``manylinux_2_28`` wheels for users on new
+  enough platforms.
+* Updated the minimum supported Rust version (MSRV) to 1.48.0, from 1.41.0.
+  Users with the latest ``pip`` will typically get a wheel and not need Rust
+  installed, but check :doc:`/installation` for documentation on installing a
+  newer ``rustc`` if required.
+* :meth:`~cryptography.fernet.Fernet.decrypt` and related methods now accept
+  both ``str`` and ``bytes`` tokens.
+* Parsing ``CertificateSigningRequest`` restores the behavior of enforcing
+  that the ``Extension`` ``critical`` field must be correctly encoded DER. See
+  `the issue <https://github.com/pyca/cryptography/issues/6368>`_ for complete
+  details.
+* Added two new OpenSSL functions to the bindings to support an upcoming
+  ``pyOpenSSL`` release.
+* When parsing :class:`~cryptography.x509.CertificateRevocationList` and
+  :class:`~cryptography.x509.CertificateSigningRequest` values, it is now
+  enforced that the ``version`` value in the input must be valid according to
+  the rules of :rfc:`2986` and :rfc:`5280`.
+* Using MD5 or SHA1 in :class:`~cryptography.x509.CertificateBuilder` and
+  other X.509 builders is deprecated and support will be removed in the next
+  version.
+* Added additional APIs to
+  :class:`~cryptography.x509.certificate_transparency.SignedCertificateTimestamp`, including
+  :attr:`~cryptography.x509.certificate_transparency.SignedCertificateTimestamp.signature_hash_algorithm`,
+  :attr:`~cryptography.x509.certificate_transparency.SignedCertificateTimestamp.signature_algorithm`,
+  :attr:`~cryptography.x509.certificate_transparency.SignedCertificateTimestamp.signature`, and
+  :attr:`~cryptography.x509.certificate_transparency.SignedCertificateTimestamp.extension_bytes`.
+* Added :attr:`~cryptography.x509.Certificate.tbs_precertificate_bytes`, allowing
+  users to access the to-be-signed pre-certificate data needed for signed
+  certificate timestamp verification.
+* :class:`~cryptography.hazmat.primitives.kdf.kbkdf.KBKDFHMAC` and
+  :class:`~cryptography.hazmat.primitives.kdf.kbkdf.KBKDFCMAC` now support
+  :attr:`~cryptography.hazmat.primitives.kdf.kbkdf.CounterLocation.MiddleFixed`
+  counter location.
+* Fixed :rfc:`4514` name parsing to reverse the order of the RDNs according
+  to the section 2.1 of the RFC, affecting method
+  :meth:`~cryptography.x509.Name.from_rfc4514_string`.
+* It is now possible to customize some aspects of encryption when serializing
+  private keys, using
+  :meth:`~cryptography.hazmat.primitives.serialization.PrivateFormat.encryption_builder`.
+* Removed several legacy symbols from our OpenSSL bindings. Users of pyOpenSSL
+  versions older than 22.0 will need to upgrade.
+* Added
+  :class:`~cryptography.hazmat.primitives.ciphers.algorithms.AES128` and
+  :class:`~cryptography.hazmat.primitives.ciphers.algorithms.AES256` classes.
+  These classes do not replace
+  :class:`~cryptography.hazmat.primitives.ciphers.algorithms.AES` (which
+  allows all AES key lengths), but are intended for applications where
+  developers want to be explicit about key length.
+
+.. _v37-0-4:
+
+37.0.4 - 2022-07-05
+~~~~~~~~~~~~~~~~~~~
+
+* Updated Windows, macOS, and Linux wheels to be compiled with OpenSSL 3.0.5.
+
+.. _v37-0-3:
+
+37.0.3 - 2022-06-21 (YANKED)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. attention::
+
+    This release was subsequently yanked from PyPI due to a regression in OpenSSL.
+
+* Updated Windows, macOS, and Linux wheels to be compiled with OpenSSL 3.0.4.
+
+.. _v37-0-2:
+
+37.0.2 - 2022-05-03
+~~~~~~~~~~~~~~~~~~~
+
+* Updated Windows, macOS, and Linux wheels to be compiled with OpenSSL 3.0.3.
+* Added a constant needed for an upcoming pyOpenSSL release.
+
+.. _v37-0-1:
+
+37.0.1 - 2022-04-27
+~~~~~~~~~~~~~~~~~~~
+
+* Fixed an issue where parsing an encrypted private key with the public
+  loader functions would hang waiting for console input on OpenSSL 3.0.x rather
+  than raising an error.
+* Restored some legacy symbols for older ``pyOpenSSL`` users. These will be
+  removed again in the future, so ``pyOpenSSL`` users should still upgrade
+  to the latest version of that package when they upgrade ``cryptography``.
+
+.. _v37-0-0:
+
+37.0.0 - 2022-04-26
+~~~~~~~~~~~~~~~~~~~
 
 * Updated Windows, macOS, and Linux wheels to be compiled with OpenSSL 3.0.2.
 * **BACKWARDS INCOMPATIBLE:** Dropped support for LibreSSL 2.9.x and 3.0.x.
@@ -16,8 +171,8 @@ Changelog
   deprecated in version 2.0, but had an extended deprecation timeline due
   to usage. Any remaining users should transition to ``sign`` and ``verify``.
 * Deprecated OpenSSL 1.1.0 support. OpenSSL 1.1.0 is no longer supported by
-  the OpenSSL project. Support for compiling with OpenSSL 1.1.0 will be
-  removed in a future ``cryptography`` release.
+  the OpenSSL project. The next release of ``cryptography`` will be the last
+  to support compiling with OpenSSL 1.1.0.
 * Deprecated Python 3.6 support. Python 3.6 is no longer supported by the
   Python core team. Support for Python 3.6 will be removed in a future
   ``cryptography`` release.
@@ -71,6 +226,12 @@ Changelog
   to :class:`~cryptography.hazmat.primitives.asymmetric.padding.PSS`. This
   constant will set the salt length to the same length as the ``PSS`` hash
   algorithm.
+* Added support for loading RSA-PSS key types with
+  :func:`~cryptography.hazmat.primitives.serialization.load_pem_private_key`
+  and
+  :func:`~cryptography.hazmat.primitives.serialization.load_der_private_key`.
+  This functionality is limited to OpenSSL 1.1.1e+ and loads the key as a
+  normal RSA private key, discarding the PSS constraint information.
 
 .. _v36-0-2:
 

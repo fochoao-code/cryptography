@@ -18,29 +18,25 @@ operating systems.
 
 * x86-64 RHEL 8.x
 * x86-64 Fedora (latest)
-* x86-64 macOS 10.15 Catalina
+* x86-64 macOS 12 Monterey
 * ARM64 macOS 12 Monterey
 * x86-64 Ubuntu 18.04, 20.04, 22.04, rolling
 * ARM64 Ubuntu 20.04
-* x86-64 Debian Stretch (9.x), Buster (10.x), Bullseye (11.x), Bookworm (12.x)
+* x86-64 Debian Buster (10.x), Bullseye (11.x), Bookworm (12.x)
   and Sid (unstable)
 * x86-64 Alpine (latest)
 * ARM64 Alpine (latest)
-* 32-bit and 64-bit Python on 64-bit Windows Server 2019
+* 32-bit and 64-bit Python on 64-bit Windows Server 2022
 
 We test compiling with ``clang`` as well as ``gcc`` and use the following
 OpenSSL releases:
 
-* ``OpenSSL 1.1.0-latest``
 * ``OpenSSL 1.1.1-latest``
 * ``OpenSSL 3.0-latest``
 
-In addition we test against several versions of LibreSSL and the latest commit
-in BoringSSL.
-
-.. warning::
-
-    Cryptography 37.0.0 has deprecated support for OpenSSL 1.1.0.
+In addition we test against versions of LibreSSL that are available in
+versions of OpenBSD that are receiving security support at the time of a given
+``cryptography`` release, and the latest commit in BoringSSL.
 
 
 Building cryptography on Windows
@@ -88,7 +84,7 @@ Building cryptography on Linux
     require no compiler if you have an updated ``pip``!
 
 ``cryptography`` ships ``manylinux`` wheels (as of 2.0) so all dependencies
-are included. For users on **pip 19.0** or above running on a ``manylinux2010``
+are included. For users on **pip 19.3** or above running on a ``manylinux2014``
 (or greater) compatible distribution (or **pip 21.2.4** for ``musllinux``) all
 you should need to do is:
 
@@ -108,7 +104,7 @@ Alpine
 
 .. warning::
 
-    The Rust available by default in Alpine < 3.12 is older than the minimum
+    The Rust available by default in Alpine < 3.14 is older than the minimum
     supported version. See the :ref:`Rust installation instructions
     <installation:Rust>` for information about installing a newer Rust.
 
@@ -123,24 +119,23 @@ Debian/Ubuntu
 
 .. warning::
 
-    The Rust available in current Debian stable and some Ubuntu versions is
-    older than the minimum supported version. Ubuntu 18.04 and 20.04 are
-    sufficiently new, but otherwise please see the
-    :ref:`Rust installation instructions <installation:Rust>` for information
-    about installing a newer Rust.
+    The Rust available in some Debian versions is older than the minimum
+    supported version. Debian Bullseye is sufficiently new, but otherwise
+    please see the :ref:`Rust installation instructions <installation:Rust>`
+    for information about installing a newer Rust.
 
 .. code-block:: console
 
     $ sudo apt-get install build-essential libssl-dev libffi-dev \
         python3-dev cargo
 
-Fedora/RHEL 8/CentOS 8
-~~~~~~~~~~~~~~~~~~~~~~
+Fedora/RHEL/CentOS
+~~~~~~~~~~~~~~~~~~
 
 .. warning::
 
     For RHEL and CentOS you must be on version 8.3 or newer for the command
-    below to install a sufficiently new Rust. If your Rust is less than 1.41.0
+    below to install a sufficiently new Rust. If your Rust is less than 1.48.0
     please see the :ref:`Rust installation instructions <installation:Rust>`
     for information about installing a newer Rust.
 
@@ -275,8 +270,8 @@ To build cryptography and dynamically link it:
 
 .. code-block:: console
 
-    $ brew install openssl@1.1 rust
-    $ env LDFLAGS="-L$(brew --prefix openssl@1.1)/lib" CFLAGS="-I$(brew --prefix openssl@1.1)/include" pip install cryptography
+    $ brew install openssl@3 rust
+    $ env LDFLAGS="-L$(brew --prefix openssl@3)/lib" CFLAGS="-I$(brew --prefix openssl@3)/include" pip install cryptography
 
 `MacPorts`_:
 
@@ -291,8 +286,8 @@ You can also build cryptography statically:
 
 .. code-block:: console
 
-    $ brew install openssl@1.1 rust
-    $ env CRYPTOGRAPHY_SUPPRESS_LINK_FLAGS=1 LDFLAGS="$(brew --prefix openssl@1.1)/lib/libssl.a $(brew --prefix openssl@1.1)/lib/libcrypto.a" CFLAGS="-I$(brew --prefix openssl@1.1)/include" pip install cryptography
+    $ brew install openssl@3 rust
+    $ env CRYPTOGRAPHY_SUPPRESS_LINK_FLAGS=1 LDFLAGS="$(brew --prefix openssl@3)/lib/libssl.a $(brew --prefix openssl@3)/lib/libcrypto.a" CFLAGS="-I$(brew --prefix openssl@3)/include" pip install cryptography
 
 `MacPorts`_:
 
@@ -316,7 +311,7 @@ Rust
     a Rust toolchain.
 
 Building ``cryptography`` requires having a working Rust toolchain. The current
-minimum supported Rust version is 1.41.0. **This is newer than the Rust some
+minimum supported Rust version is 1.48.0. **This is newer than the Rust some
 package managers ship**, so users may need to install with the
 instructions below.
 

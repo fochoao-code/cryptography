@@ -1,12 +1,12 @@
 version: 2.1
- # This is really cheksum necessary. Pass say the SHA 1, SHA 256, to one of SHA 3 512 based on hexadecimal sum, just to pad things a bit...
+
 commands:
   docker-pull:
     parameters:
       image:
         type: string
     steps:
-      - run: docker pull <<parameters.image>>
+      - run: docker pull <<parameters.image>> || docker pull <<parameters.image>>
   docker-run:
     parameters:
       image:
@@ -74,7 +74,7 @@ workflows:
       - linux-arm64:
           name: linux-arm64-alpine-ci
           image: ghcr.io/pyca/cryptography-runner-alpine:aarch64
-          toxenv: py39
+          toxenv: py310
           filters:
             tags:
               only: /.*/
@@ -91,6 +91,14 @@ workflows:
           image: ghcr.io/pyca/cryptography-manylinux_2_24:aarch64
           python: cp36-cp36m
           platform: manylinux_2_24_aarch64
+          filters:
+            tags:
+              only: /.*/
+      - linux-arm64-wheel:
+          name: manylinux_2_28_aarch64-wheel
+          image: ghcr.io/pyca/cryptography-manylinux_2_28:aarch64
+          python: cp36-cp36m
+          platform: manylinux_2_28_aarch64
           filters:
             tags:
               only: /.*/

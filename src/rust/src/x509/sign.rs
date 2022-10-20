@@ -5,11 +5,14 @@
 use crate::x509;
 use crate::x509::oid;
 
-lazy_static::lazy_static! {
+use once_cell::sync::Lazy;
+
+static NULL_DER: Lazy<Vec<u8>> = Lazy::new(|| {
     // TODO: kind of verbose way to say "\x05\x00".
-    static ref NULL_DER: Vec<u8> = asn1::write_single(&());
-    pub(crate) static ref NULL_TLV: asn1::Tlv<'static> = asn1::parse_single(&NULL_DER).unwrap();
-}
+    asn1::write_single(&()).unwrap()
+});
+pub(crate) static NULL_TLV: Lazy<asn1::Tlv<'static>> =
+    Lazy::new(|| asn1::parse_single(&NULL_DER).unwrap());
 
 enum KeyType {
     Rsa,
@@ -21,8 +24,6 @@ enum KeyType {
 
 enum HashType {
     None,
-    Md5,
-    Sha1,
     Sha224,
     Sha256,
     Sha384,
@@ -36,23 +37,23 @@ enum HashType {
 fn identify_key_type(py: pyo3::Python<'_>, private_key: &pyo3::PyAny) -> pyo3::PyResult<KeyType> {
     let rsa_private_key: &pyo3::types::PyType = py
         .import("cryptography.hazmat.primitives.asymmetric.rsa")?
-        .getattr("RSAPrivateKey")?
+        .getattr(crate::intern!(py, "RSAPrivateKey"))?
         .extract()?;
     let dsa_key_type: &pyo3::types::PyType = py
         .import("cryptography.hazmat.primitives.asymmetric.dsa")?
-        .getattr("DSAPrivateKey")?
+        .getattr(crate::intern!(py, "DSAPrivateKey"))?
         .extract()?;
     let ec_key_type: &pyo3::types::PyType = py
         .import("cryptography.hazmat.primitives.asymmetric.ec")?
-        .getattr("EllipticCurvePrivateKey")?
+        .getattr(crate::intern!(py, "EllipticCurvePrivateKey"))?
         .extract()?;
     let ed25519_key_type: &pyo3::types::PyType = py
         .import("cryptography.hazmat.primitives.asymmetric.ed25519")?
-        .getattr("Ed25519PrivateKey")?
+        .getattr(crate::intern!(py, "Ed25519PrivateKey"))?
         .extract()?;
     let ed448_key_type: &pyo3::types::PyType = py
         .import("cryptography.hazmat.primitives.asymmetric.ed448")?
-        .getattr("Ed448PrivateKey")?
+        .getattr(crate::intern!(py, "Ed448PrivateKey"))?
         .extract()?;
 
     if rsa_private_key.is_instance(private_key)? {
@@ -82,7 +83,7 @@ fn identify_hash_type(
 
     let hash_algorithm_type: &pyo3::types::PyType = py
         .import("cryptography.hazmat.primitives.hashes")?
-        .getattr("HashAlgorithm")?
+        .getattr(crate::intern!(py, "HashAlgorithm"))?
         .extract()?;
     if !hash_algorithm_type.is_instance(hash_algorithm)? {
         return Err(pyo3::exceptions::PyTypeError::new_err(
@@ -90,9 +91,10 @@ fn identify_hash_type(
         ));
     }
 
-    match hash_algorithm.getattr("name")?.extract()? {
-        "md5" => Ok(HashType::Md5),
-        "sha1" => Ok(HashType::Sha1),
+    match hash_algorithm
+        .getattr(crate::intern!(py, "name"))?
+        .extract()?
+    {
         "sha224" => Ok(HashType::Sha224),
         "sha256" => Ok(HashType::Sha256),
         "sha384" => Ok(HashType::Sha384),
@@ -118,11 +120,11 @@ pub(crate) fn compute_signature_algorithm<'p>(
 
     match (key_type, hash_type) {
         (KeyType::Ed25519, HashType::None) => Ok(x509::AlgorithmIdentifier {
-            oid: (*oid::ED25519_OID).clone(),
+            oid: (oid::ED25519_OID).clone(),
             params: None,
         }),
         (KeyType::Ed448, HashType::None) => Ok(x509::AlgorithmIdentifier {
-            oid: (*oid::ED448_OID).clone(),
+            oid: (oid::ED448_OID).clone(),
             params: None,
         }),
         (KeyType::Ed25519, _) | (KeyType::Ed448, _) => {
@@ -131,102 +133,86 @@ pub(crate) fn compute_signature_algorithm<'p>(
             ))
         }
 
-        (KeyType::Ec, HashType::Sha1) => Ok(x509::AlgorithmIdentifier {
-            oid: (*oid::ECDSA_WITH_SHA1_OID).clone(),
-            params: None,
-        }),
         (KeyType::Ec, HashType::Sha224) => Ok(x509::AlgorithmIdentifier {
-            oid: (*oid::ECDSA_WITH_SHA224_OID).clone(),
+            oid: (oid::ECDSA_WITH_SHA224_OID).clone(),
             params: None,
         }),
         (KeyType::Ec, HashType::Sha256) => Ok(x509::AlgorithmIdentifier {
-            oid: (*oid::ECDSA_WITH_SHA256_OID).clone(),
+            oid: (oid::ECDSA_WITH_SHA256_OID).clone(),
             params: None,
         }),
         (KeyType::Ec, HashType::Sha384) => Ok(x509::AlgorithmIdentifier {
-            oid: (*oid::ECDSA_WITH_SHA384_OID).clone(),
+            oid: (oid::ECDSA_WITH_SHA384_OID).clone(),
             params: None,
         }),
         (KeyType::Ec, HashType::Sha512) => Ok(x509::AlgorithmIdentifier {
-            oid: (*oid::ECDSA_WITH_SHA512_OID).clone(),
+            oid: (oid::ECDSA_WITH_SHA512_OID).clone(),
             params: None,
         }),
         (KeyType::Ec, HashType::Sha3_224) => Ok(x509::AlgorithmIdentifier {
-            oid: (*oid::ECDSA_WITH_SHA3_224_OID).clone(),
+            oid: (oid::ECDSA_WITH_SHA3_224_OID).clone(),
             params: None,
         }),
         (KeyType::Ec, HashType::Sha3_256) => Ok(x509::AlgorithmIdentifier {
-            oid: (*oid::ECDSA_WITH_SHA3_256_OID).clone(),
+            oid: (oid::ECDSA_WITH_SHA3_256_OID).clone(),
             params: None,
         }),
         (KeyType::Ec, HashType::Sha3_384) => Ok(x509::AlgorithmIdentifier {
-            oid: (*oid::ECDSA_WITH_SHA3_384_OID).clone(),
+            oid: (oid::ECDSA_WITH_SHA3_384_OID).clone(),
             params: None,
         }),
         (KeyType::Ec, HashType::Sha3_512) => Ok(x509::AlgorithmIdentifier {
-            oid: (*oid::ECDSA_WITH_SHA3_512_OID).clone(),
+            oid: (oid::ECDSA_WITH_SHA3_512_OID).clone(),
             params: None,
         }),
 
-        (KeyType::Rsa, HashType::Md5) => Ok(x509::AlgorithmIdentifier {
-            oid: (*oid::RSA_WITH_MD5_OID).clone(),
-            params: Some(*NULL_TLV),
-        }),
-        (KeyType::Rsa, HashType::Sha1) => Ok(x509::AlgorithmIdentifier {
-            oid: (*oid::RSA_WITH_SHA1_OID).clone(),
-            params: Some(*NULL_TLV),
-        }),
         (KeyType::Rsa, HashType::Sha224) => Ok(x509::AlgorithmIdentifier {
-            oid: (*oid::RSA_WITH_SHA224_OID).clone(),
+            oid: (oid::RSA_WITH_SHA224_OID).clone(),
             params: Some(*NULL_TLV),
         }),
         (KeyType::Rsa, HashType::Sha256) => Ok(x509::AlgorithmIdentifier {
-            oid: (*oid::RSA_WITH_SHA256_OID).clone(),
+            oid: (oid::RSA_WITH_SHA256_OID).clone(),
             params: Some(*NULL_TLV),
         }),
         (KeyType::Rsa, HashType::Sha384) => Ok(x509::AlgorithmIdentifier {
-            oid: (*oid::RSA_WITH_SHA384_OID).clone(),
+            oid: (oid::RSA_WITH_SHA384_OID).clone(),
             params: Some(*NULL_TLV),
         }),
         (KeyType::Rsa, HashType::Sha512) => Ok(x509::AlgorithmIdentifier {
-            oid: (*oid::RSA_WITH_SHA512_OID).clone(),
+            oid: (oid::RSA_WITH_SHA512_OID).clone(),
             params: Some(*NULL_TLV),
         }),
         (KeyType::Rsa, HashType::Sha3_224) => Ok(x509::AlgorithmIdentifier {
-            oid: (*oid::RSA_WITH_SHA3_224_OID).clone(),
+            oid: (oid::RSA_WITH_SHA3_224_OID).clone(),
             params: Some(*NULL_TLV),
         }),
         (KeyType::Rsa, HashType::Sha3_256) => Ok(x509::AlgorithmIdentifier {
-            oid: (*oid::RSA_WITH_SHA3_256_OID).clone(),
+            oid: (oid::RSA_WITH_SHA3_256_OID).clone(),
             params: Some(*NULL_TLV),
         }),
         (KeyType::Rsa, HashType::Sha3_384) => Ok(x509::AlgorithmIdentifier {
-            oid: (*oid::RSA_WITH_SHA3_384_OID).clone(),
+            oid: (oid::RSA_WITH_SHA3_384_OID).clone(),
             params: Some(*NULL_TLV),
         }),
         (KeyType::Rsa, HashType::Sha3_512) => Ok(x509::AlgorithmIdentifier {
-            oid: (*oid::RSA_WITH_SHA3_512_OID).clone(),
+            oid: (oid::RSA_WITH_SHA3_512_OID).clone(),
             params: Some(*NULL_TLV),
         }),
 
-        (KeyType::Dsa, HashType::Sha1) => Ok(x509::AlgorithmIdentifier {
-            oid: (*oid::DSA_WITH_SHA1_OID).clone(),
-            params: None,
-        }),
         (KeyType::Dsa, HashType::Sha224) => Ok(x509::AlgorithmIdentifier {
-            oid: (*oid::DSA_WITH_SHA224_OID).clone(),
+            oid: (oid::DSA_WITH_SHA224_OID).clone(),
             params: None,
         }),
         (KeyType::Dsa, HashType::Sha256) => Ok(x509::AlgorithmIdentifier {
-            oid: (*oid::DSA_WITH_SHA256_OID).clone(),
+            oid: (oid::DSA_WITH_SHA256_OID).clone(),
             params: None,
         }),
         (KeyType::Dsa, HashType::Sha384) => Ok(x509::AlgorithmIdentifier {
-            oid: (*oid::DSA_WITH_SHA384_OID).clone(),
+            oid: (oid::DSA_WITH_SHA384_OID).clone(),
             params: None,
         }),
         (KeyType::Dsa, HashType::Sha512) => Ok(x509::AlgorithmIdentifier {
-            oid: (*oid::DSA_WITH_SHA512_OID).clone(),
+            oid: (oid::DSA_WITH_SHA512_OID).clone(),
             params: None,
         }),
         (KeyType::Dsa, HashType::Sha3_224)
@@ -238,9 +224,6 @@ pub(crate) fn compute_signature_algorithm<'p>(
 
         (_, HashType::None) => Err(pyo3::exceptions::PyTypeError::new_err(
             "Algorithm must be a registered hash algorithm, not None.",
-        )),
-        (_, HashType::Md5) => Err(pyo3::exceptions::PyValueError::new_err(
-            "MD5 hash algorithm is only supported with RSA keys",
         )),
     }
 }
@@ -257,12 +240,16 @@ pub(crate) fn sign_data<'p>(
         KeyType::Ed25519 | KeyType::Ed448 => private_key.call_method1("sign", (data,))?,
         KeyType::Ec => {
             let ec_mod = py.import("cryptography.hazmat.primitives.asymmetric.ec")?;
-            let ecdsa = ec_mod.getattr("ECDSA")?.call1((hash_algorithm,))?;
+            let ecdsa = ec_mod
+                .getattr(crate::intern!(py, "ECDSA"))?
+                .call1((hash_algorithm,))?;
             private_key.call_method1("sign", (data, ecdsa))?
         }
         KeyType::Rsa => {
             let padding_mod = py.import("cryptography.hazmat.primitives.asymmetric.padding")?;
-            let pkcs1v15 = padding_mod.getattr("PKCS1v15")?.call0()?;
+            let pkcs1v15 = padding_mod
+                .getattr(crate::intern!(py, "PKCS1v15"))?
+                .call0()?;
             private_key.call_method1("sign", (data, pkcs1v15, hash_algorithm))?
         }
         KeyType::Dsa => private_key.call_method1("sign", (data, hash_algorithm))?,

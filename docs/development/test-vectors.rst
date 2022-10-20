@@ -143,6 +143,8 @@ Custom asymmetric vectors
   contain an Ed448 public key.
 * ``asymmetric/PKCS8/rsa_pss_2048.pem`` - A 2048-bit RSA PSS key with no
   explicit parameters set.
+* ``asymmetric/PKCS8/rsa_pss_2048_pub.der`` - The public key corresponding to
+  ``asymmetric/PKCS8/rsa_pss_2048.pem``.
 * ``asymmetric/PKCS8/rsa_pss_2048_hash.pem`` - A 2048-bit RSA PSS key with the
   hash algorithm PSS parameter set to SHA256.
 * ``asymmetric/PKCS8/rsa_pss_2048_hash_mask.pem`` - A 2048-bit RSA PSS key with
@@ -242,6 +244,11 @@ X.509
   signature OID for RSA with SHA1. This certificate has an invalid signature.
 * ``badssl-sct.pem`` - A certificate with the certificate transparency signed
   certificate timestamp extension.
+* ``badssl-sct-none-hash.der`` - The same as ``badssl-sct.pem``, but DER-encoded
+  and with the SCT's signature hash manually changed to "none" (``0x00``).
+* ``badssl-sct-anonymous-sig.der`` - The same as ``badssl-sct.pem``, but
+  DER-encoded and with the SCT's signature algorithm manually changed to
+  "anonymous" (``0x00``).
 * ``bigoid.pem`` - A certificate with a rather long OID in the
   Certificate Policies extension.  We need to make sure we can parse
   long OIDs.
@@ -274,6 +281,8 @@ X.509
   ``explicitText`` entry with a ``BMPString`` type.
 * ``scottishpower-bitstring-dn.pem`` - An ECDSA certificate that contains
   a subject DN with a bit string type.
+* ``cryptography-scts-tbs-precert.der`` - The "to-be-signed" pre-certificate
+  bytes from ``cryptography-scts.pem``, with the SCT list extension removed.
 
 Custom X.509 Vectors
 ~~~~~~~~~~~~~~~~~~~~
@@ -463,6 +472,10 @@ Custom X.509 Vectors
 * ``bad_country.pem`` - A certificate with country name and jurisdiction
   country name values in its subject and issuer distinguished names which
   are longer than 2 characters.
+* ``rsa_pss_cert.pem`` - A self-signed certificate with an RSA PSS signature
+  with ``asymmetric/PKCS8/rsa_pss_2048.pem`` as its key.
+* ``long-form-name-attribute.pem`` - A certificate with ``subject`` and ``issuer``
+  names containing attributes whose value's tag is encoded in long-form.
 
 Custom X.509 Request Vectors
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -483,18 +496,19 @@ Custom X.509 Request Vectors
   request using RSA and SHA1 with a subject alternative name extension
   generated using OpenSSL.
 * ``two_basic_constraints.pem`` - A certificate signing request
-  for an RSA 2048 bit key containing two basic constraints extensions.
+  for an RSA 2048 bit key containing two basic constraints extensions. The
+  signature on this CSR is invalid.
 * ``unsupported_extension.pem`` - A certificate signing request
   for an RSA 2048 bit key containing containing an unsupported
   extension type. The OID was encoded as "1.2.3.4" with an
-  ``extnValue`` of "value".
+  ``extnValue`` of "value". The signature on this CSR is invalid.
 * ``unsupported_extension_critical.pem`` - A certificate signing
   request for an RSA 2048 bit key containing containing an unsupported
   extension type marked critical. The OID was encoded as "1.2.3.4"
-  with an ``extnValue`` of "value".
+  with an ``extnValue`` of "value". The signature on this CSR is invalid.
 * ``basic_constraints.pem`` - A certificate signing request for an RSA
   2048 bit key containing a basic constraints extension marked as
-  critical.
+  critical. The signature on this CSR is invalid.
 * ``invalid_signature.pem`` - A certificate signing request for an RSA
   1024 bit key containing an invalid signature with correct padding.
 * ``challenge.pem`` - A certificate signing request for an RSA 2048 bit key
@@ -510,6 +524,10 @@ Custom X.509 Request Vectors
   inside the ASN.1 set. The signature on this request is invalid.
 * ``freeipa-bad-critical.pem`` - A certificate signing request where the
   extensions value has a ``critical`` value of ``False`` explicitly encoded.
+* ``bad-version.pem`` - A certificate signing request where the version is
+  invalid.
+* ``long-form-attribute.pem`` - A certificate signing request containing an
+  attribute whose value's tag is encoded in the long form.
 
 Custom X.509 Certificate Revocation List Vectors
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -518,16 +536,18 @@ Custom X.509 Certificate Revocation List Vectors
   serials match their list position. It includes one revocation without
   any entry extensions, 10 revocations with every supported reason code and one
   revocation with an unsupported, non-critical entry extension with the OID
-  value set to "1.2.3.4".
+  value set to "1.2.3.4". The signature on this CRL is invalid.
 * ``crl_dup_entry_ext.pem`` - Contains a CRL with one revocation which has a
-  duplicate entry extension.
+  duplicate entry extension. The signature on this CRL is invalid.
 * ``crl_md2_unknown_crit_entry_ext.pem`` - Contains a CRL with one revocation
   which contains an unsupported critical entry extension with the OID value set
-  to "1.2.3.4". The CRL uses an unsupported MD2 signature algorithm.
+  to "1.2.3.4". The CRL uses an unsupported MD2 signature algorithm, and the
+  signature on this CRL is invalid.
 * ``crl_unsupported_reason.pem`` - Contains a CRL with one revocation which has
-  an unsupported reason code.
+  an unsupported reason code. The signature on this CRL is invalid.
 * ``crl_inval_cert_issuer_entry_ext.pem`` - Contains a CRL with one revocation
-  which has one entry extension for certificate issuer with an empty value.
+  which has one entry extension for certificate issuer with an empty value. The
+  signature on this CRL is invalid.
 * ``crl_empty.pem`` - Contains a CRL with no revoked certificates.
 * ``crl_empty_no_sequence.der`` - Contains a CRL with no revoked certificates
   and the optional ASN.1 sequence for revoked certificates is omitted.
@@ -576,6 +596,8 @@ Custom X.509 Certificate Revocation List Vectors
   value in ``thisUpdate``. The signature on this CRL is invalid.
 * ``crl_no_next_time.pem`` - Contains a CRL with no ``nextUpdate`` value. The
   signature on this CRL is invalid.
+* ``crl_bad_version.pem`` - Contains a CRL with an invalid version.
+* ``crl_almost_10k.pem`` - Contains a CRL with 9,999 entries.
 
 X.509 OCSP Test Vectors
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -844,7 +866,7 @@ Symmetric ciphers
 
 * AES (CBC, CFB, ECB, GCM, OFB, CCM) from `NIST CAVP`_.
 * AES CTR from :rfc:`3686`.
-* AES OCB3 from :rfc:`7253` and `dkg's additional OCB3 vectors`_.
+* AES OCB3 from :rfc:`7253`, `dkg's additional OCB3 vectors`_, and `OpenSSL's OCB vectors`_.
 * AES SIV from OpenSSL's `evpciph_aes_siv.txt`_.
 * 3DES (CBC, CFB, ECB, OFB) from `NIST CAVP`_.
 * ARC4 (KEY-LENGTH: 40, 56, 64, 80, 128, 192, 256) from :rfc:`6229`.
@@ -960,4 +982,5 @@ header format (substituting the correct information):
 .. _`server-ed448-cert.pem`: https://github.com/openssl/openssl/blob/2a1e2fe145c6eb8e75aa2e1b3a8c3a49384b2852/test/certs/server-ed448-cert.pem
 .. _`evpciph_aes_siv.txt`: https://github.com/openssl/openssl/blob/d830526c711074fdcd82c70c24c31444366a1ed8/test/recipes/30-test_evp_data/evpciph_aes_siv.txt
 .. _`dkg's additional OCB3 vectors`: https://gitlab.com/dkg/ocb-test-vectors
+.. _`OpenSSL's OCB vectors`: https://github.com/openssl/openssl/commit/2f19ab18a29cf9c82cdd68bc8c7e5be5061b19be
 .. _`badkeys`: https://github.com/vcsjones/badkeys/tree/50f1cc5f8d13bf3a2046d689f6452decb15d9c3c

@@ -7,7 +7,7 @@ X.509 Reference
 
     pem_crl_data = b"""
     -----BEGIN X509 CRL-----
-    MIIBtDCBnQIBAjANBgkqhkiG9w0BAQsFADAnMQswCQYDVQQGEwJVUzEYMBYGA1UE
+    MIIBtDCBnQIBATANBgkqhkiG9w0BAQsFADAnMQswCQYDVQQGEwJVUzEYMBYGA1UE
     AwwPY3J5cHRvZ3JhcGh5LmlvGA8yMDE1MDEwMTAwMDAwMFoYDzIwMTYwMTAxMDAw
     MDAwWjA+MDwCAQAYDzIwMTUwMTAxMDAwMDAwWjAmMBgGA1UdGAQRGA8yMDE1MDEw
     MTAwMDAwMFowCgYDVR0VBAMKAQEwDQYJKoZIhvcNAQELBQADggEBABRA4ww50Lz5
@@ -462,6 +462,30 @@ X.509 Certificate Object
        An :class:`~cryptography.exceptions.InvalidSignature` exception will be
        raised if the signature fails to verify.
 
+
+    .. attribute:: tbs_precertificate_bytes
+
+        .. versionadded:: 38.0
+
+        :type: bytes
+
+        :raises ValueError: If the certificate doesn't have the expected
+            Certificate Transparency extensions.
+
+        The DER encoded bytes payload (as defined by :rfc:`6962`) that is hashed
+        and then signed by the private key of the pre-certificate's issuer.
+        This data may be used to validate a Signed Certificate Timestamp's
+        signature, but use extreme caution as SCT validation is a complex
+        problem that involves much more than just signature checks.
+
+        This method is primarily useful in the context of programs that
+        interact with and verify the products of Certificate Transparency logs,
+        as specified in :rfc:`6962`. If you are not directly interacting with a
+        Certificate Transparency log, this method unlikely to be what you
+        want. To make unintentional misuse less likely, it raises a
+        ``ValueError`` if the underlying certificate does not contain the
+        expected Certificate Transparency extensions.
+
     .. method:: public_bytes(encoding)
 
         .. versionadded:: 1.0
@@ -508,7 +532,7 @@ X.509 CRL (Certificate Revocation List) Object
 
             >>> from cryptography.hazmat.primitives import hashes
             >>> crl.fingerprint(hashes.SHA256())
-            b'e\xcf.\xc4:\x83?1\xdc\xf3\xfc\x95\xd7\xb3\x87\xb3\x8e\xf8\xb93!\x87\x07\x9d\x1b\xb4!\xb9\xe4W\xf4\x1f'
+            b'\xe3\x1d\xb5P\x18\x9ed\x9f\x16O\x9dm\xc1>\x8c\xca\xb1\xc6x?T\x9f\xe9t_\x1d\x8dF8V\xf78'
 
     .. method:: get_revoked_certificate_by_serial_number(serial_number)
 
@@ -1225,11 +1249,15 @@ X.509 CSR (Certificate Signing Request) Builder Object
 
         :type: list of :class:`RelativeDistinguishedName`
 
-    .. classmethod:: from_rfc4514_string(data)
+    .. classmethod:: from_rfc4514_string(data, attr_name_overrides=None)
 
         .. versionadded: 37.0
 
         :param str data: An :rfc:`4514` string.
+        :param attr_name_overrides: Specify custom OID to name mappings, which
+            can be used to match vendor-specific extensions. See
+            :class:`~cryptography.x509.oid.NameOID` for common attribute
+            OIDs.
 
         :returns: A :class:`Name` parsed from ``data``.
 
@@ -1238,6 +1266,8 @@ X.509 CSR (Certificate Signing Request) Builder Object
 
             >>> x509.Name.from_rfc4514_string("CN=cryptography.io")
             <Name(CN=cryptography.io)>
+            >>> x509.Name.from_rfc4514_string("E=pyca@cryptography.io", {"E": NameOID.EMAIL_ADDRESS})
+            <Name(1.2.840.113549.1.9.1=pyca@cryptography.io)>
 
     .. method:: get_attributes_for_oid(oid)
 
@@ -1538,7 +1568,7 @@ X.509 Extensions
 
         :param oid: An :class:`ObjectIdentifier` instance.
 
-        :returns: An instance of the extension class.
+        :returns: An instance of :class:`Extension`.
 
         :raises cryptography.x509.ExtensionNotFound: If the certificate does
             not have the extension requested.
@@ -1555,7 +1585,7 @@ X.509 Extensions
 
         :param extclass: An extension class.
 
-        :returns: An instance of the extension class.
+        :returns: An instance of :class:`Extension`.
 
         :raises cryptography.x509.ExtensionNotFound: If the certificate does
             not have the extension requested.
@@ -3159,7 +3189,7 @@ instances. The following common OIDs are available as constants.
         is used to denote that a certificate may be used as a Kerberos
         domain controller certificate authorizing ``PKINIT`` access. For
         more information see :rfc:`4556`.
-        
+
     .. attribute:: IPSEC_IKE
 
         .. versionadded:: 37.0
@@ -3168,6 +3198,15 @@ instances. The following common OIDs are available as constants.
         is used to denote that a certificate may be assigned to an IPSEC SA,
         and can be used by the assignee to initiate an IPSec Internet Key
         Exchange. For more information see :rfc:`4945`.
+
+    .. attribute:: CERTIFICATE_TRANSPARENCY
+
+        .. versionadded:: 38.0
+
+        Corresponds to the dotted string ``"1.3.6.1.4.1.11129.2.4.4"``. This
+        is used to denote that a certificate may be used as a pre-certificate
+        signing certificate for Certificate Transparency log operation
+        purposes. For more information see :rfc:`6962`.
 
 
 .. class:: AuthorityInformationAccessOID

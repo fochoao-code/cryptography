@@ -14,12 +14,16 @@ message but an attacker can create bogus messages and force the application to
 decrypt them. In many contexts, a lack of authentication on encrypted messages
 can result in a loss of secrecy as well.
 
-For this reason it is **strongly** recommended to combine encryption with a
-message authentication code, such as :doc:`HMAC </hazmat/primitives/mac/hmac>`,
-in an "encrypt-then-MAC" formulation as `described by Colin Percival`_.
-``cryptography`` includes a recipe named :doc:`/fernet` that does this for you.
-**To minimize the risk of security issues you should evaluate Fernet to see if
-it fits your needs before implementing anything using this module.**
+For this reason in nearly all contexts it is necessary to combine encryption
+with a message authentication code, such as
+:doc:`HMAC </hazmat/primitives/mac/hmac>`, in an "encrypt-then-MAC"
+formulation as `described by Colin Percival`_. ``cryptography`` includes a
+recipe named :doc:`/fernet` that does this for you. **To minimize the risk of
+security issues you should evaluate Fernet to see if it fits your needs before
+implementing anything using this module.** If :doc:`/fernet` is not
+appropriate for your use-case then you may still benefit from
+:doc:`/hazmat/primitives/aead` which combines encryption and authentication
+securely.
 
 .. class:: Cipher(algorithm, mode)
 
@@ -91,6 +95,28 @@ Algorithms
         ``192``, or ``256`` :term:`bits` long.
     :type key: :term:`bytes-like`
 
+.. class:: AES128(key)
+
+    .. versionadded:: 38.0.0
+
+    An AES class that only accepts 128 bit keys. This is identical to the
+    standard ``AES`` class except that it will only accept a single key length.
+
+    :param key: The secret key. This must be kept secret. ``128``
+        :term:`bits` long.
+    :type key: :term:`bytes-like`
+
+.. class:: AES256(key)
+
+    .. versionadded:: 38.0.0
+
+    An AES class that only accepts 256 bit keys. This is identical to the
+    standard ``AES`` class except that it will only accept a single key length.
+
+    :param key: The secret key. This must be kept secret. ``256``
+        :term:`bits` long.
+    :type key: :term:`bytes-like`
+
 .. class:: Camellia(key)
 
     Camellia is a block cipher approved for use by `CRYPTREC`_ and ISO/IEC.
@@ -101,7 +127,7 @@ Algorithms
         ``192``, or ``256`` :term:`bits` long.
     :type key: :term:`bytes-like`
 
-.. class:: ChaCha20(key)
+.. class:: ChaCha20(key, nonce)
 
     .. versionadded:: 2.1
 
@@ -126,7 +152,9 @@ Algorithms
         nonce with the same key compromises the security of every message
         encrypted with that key. The nonce does not need to be kept secret
         and may be included with the ciphertext. This must be ``128``
-        :term:`bits` in length.
+        :term:`bits` in length. The 128-bit value is a concatenation of 4-byte
+        little-endian counter and the 12-byte nonce (as described in
+        :rfc:`7539`).
     :type nonce: :term:`bytes-like`
 
         .. note::

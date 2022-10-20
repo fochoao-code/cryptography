@@ -2,7 +2,9 @@
 // 2.0, and the BSD License. See the LICENSE file in the root of this repository
 // for complete details.
 
-use crate::asn1::{big_byte_slice_to_py_int, PyAsn1Error, PyAsn1Result};
+use crate::asn1::{
+    big_byte_slice_to_py_int, py_uint_to_big_endian_bytes, PyAsn1Error, PyAsn1Result,
+};
 use crate::x509;
 use crate::x509::{extensions, ocsp, oid};
 use std::sync::Arc;
@@ -48,9 +50,8 @@ struct OCSPRequest {
 }
 
 impl OCSPRequest {
-    fn cert_id(&self) -> Result<ocsp::CertID<'_>, PyAsn1Error> {
-        Ok(self
-            .raw
+    fn cert_id(&self) -> ocsp::CertID<'_> {
+        self.raw
             .borrow_value()
             .tbs_request
             .request_list
@@ -58,25 +59,25 @@ impl OCSPRequest {
             .clone()
             .next()
             .unwrap()
-            .req_cert)
+            .req_cert
     }
 }
 
 #[pyo3::prelude::pymethods]
 impl OCSPRequest {
     #[getter]
-    fn issuer_name_hash(&self) -> Result<&[u8], PyAsn1Error> {
-        Ok(self.cert_id()?.issuer_name_hash)
+    fn issuer_name_hash(&self) -> &[u8] {
+        self.cert_id().issuer_name_hash
     }
 
     #[getter]
-    fn issuer_key_hash(&self) -> Result<&[u8], PyAsn1Error> {
-        Ok(self.cert_id()?.issuer_key_hash)
+    fn issuer_key_hash(&self) -> &[u8] {
+        self.cert_id().issuer_key_hash
     }
 
     #[getter]
     fn hash_algorithm<'p>(&self, py: pyo3::Python<'p>) -> Result<&'p pyo3::PyAny, PyAsn1Error> {
-        let cert_id = self.cert_id()?;
+        let cert_id = self.cert_id();
 
         let hashes = py.import("cryptography.hazmat.primitives.hashes")?;
         match ocsp::OIDS_TO_HASH.get(&cert_id.hash_algorithm.oid) {
@@ -84,10 +85,12 @@ impl OCSPRequest {
             None => {
                 let exceptions = py.import("cryptography.exceptions")?;
                 Err(PyAsn1Error::from(pyo3::PyErr::from_instance(
-                    exceptions.getattr("UnsupportedAlgorithm")?.call1((format!(
-                        "Signature algorithm OID: {} not recognized",
-                        cert_id.hash_algorithm.oid
-                    ),))?,
+                    exceptions
+                        .getattr(crate::intern!(py, "UnsupportedAlgorithm"))?
+                        .call1((format!(
+                            "Signature algorithm OID: {} not recognized",
+                            cert_id.hash_algorithm.oid
+                        ),))?,
                 )))
             }
         }
@@ -95,7 +98,7 @@ impl OCSPRequest {
 
     #[getter]
     fn serial_number<'p>(&self, py: pyo3::Python<'p>) -> Result<&'p pyo3::PyAny, PyAsn1Error> {
-        let bytes = self.cert_id()?.serial_number.as_bytes();
+        let bytes = self.cert_id().serial_number.as_bytes();
         Ok(big_byte_slice_to_py_int(py, bytes)?)
     }
 
@@ -107,17 +110,18 @@ impl OCSPRequest {
             &mut self.cached_extensions,
             &self.raw.borrow_value().tbs_request.request_extensions,
             |oid, value| {
-                if oid == &*oid::NONCE_OID {
-                    // This is a disaster. RFC 2560 says that the contents of the nonce is
-                    // just the raw extension value. This is nonsense, since they're always
-                    // supposed to be ASN.1 TLVs. RFC 6960 correctly specifies that the
-                    // nonce is an OCTET STRING, and so you should unwrap the TLV to get
-                    // the nonce. So we try parsing as a TLV and fall back to just using
-                    // the raw value.
-                    let nonce = asn1::parse_single::<&[u8]>(value).unwrap_or(value);
-                    Ok(Some(x509_module.call_method1("OCSPNonce", (nonce,))?))
-                } else {
-                    Ok(None)
+                match oid {
+                    &oid::NONCE_OID => {
+                        // This is a disaster. RFC 2560 says that the contents of the nonce is
+                        // just the raw extension value. This is nonsense, since they're always
+                        // supposed to be ASN.1 TLVs. RFC 6960 correctly specifies that the
+                        // nonce is an OCTET STRING, and so you should unwrap the TLV to get
+                        // the nonce. So we try parsing as a TLV and fall back to just using
+                        // the raw value.
+                        let nonce = asn1::parse_single::<&[u8]>(value).unwrap_or(value);
+                        Ok(Some(x509_module.call_method1("OCSPNonce", (nonce,))?))
+                    }
+                    _ => Ok(None),
                 }
             },
         )
@@ -127,17 +131,18 @@ impl OCSPRequest {
         &self,
         py: pyo3::Python<'p>,
         encoding: &pyo3::PyAny,
-    ) -> pyo3::PyResult<&'p pyo3::types::PyBytes> {
+    ) -> PyAsn1Result<&'p pyo3::types::PyBytes> {
         let der = py
             .import("cryptography.hazmat.primitives.serialization")?
-            .getattr("Encoding")?
-            .getattr("DER")?;
+            .getattr(crate::intern!(py, "Encoding"))?
+            .getattr(crate::intern!(py, "DER"))?;
         if encoding != der {
             return Err(pyo3::exceptions::PyValueError::new_err(
                 "The only allowed encoding value is Encoding.DER",
-            ));
+            )
+            .into());
         }
-        let result = asn1::write_single(self.raw.borrow_value());
+        let result = asn1::write_single(self.raw.borrow_value())?;
         Ok(pyo3::types::PyBytes::new(py, &result))
     }
 }
@@ -177,19 +182,50 @@ struct Request<'a> {
 
 #[pyo3::prelude::pyfunction]
 fn create_ocsp_request(py: pyo3::Python<'_>, builder: &pyo3::PyAny) -> PyAsn1Result<OCSPRequest> {
+    let builder_request = builder.getattr(crate::intern!(py, "_request"))?;
+
+    // Declare outside the if-block so the lifetimes are right.
     let (py_cert, py_issuer, py_hash): (
         pyo3::PyRef<'_, x509::Certificate>,
         pyo3::PyRef<'_, x509::Certificate>,
         &pyo3::PyAny,
-    ) = builder.getattr("_request")?.extract()?;
+    );
+    let req_cert = if !builder_request.is_none() {
+        let tuple = builder_request.extract::<(
+            pyo3::PyRef<'_, x509::Certificate>,
+            pyo3::PyRef<'_, x509::Certificate>,
+            &pyo3::PyAny,
+        )>()?;
+        py_cert = tuple.0;
+        py_issuer = tuple.1;
+        py_hash = tuple.2;
+        ocsp::CertID::new(py, &py_cert, &py_issuer, py_hash)?
+    } else {
+        let (issuer_name_hash, issuer_key_hash, py_serial, py_hash): (
+            &[u8],
+            &[u8],
+            &pyo3::types::PyLong,
+            &pyo3::PyAny,
+        ) = builder
+            .getattr(crate::intern!(py, "_request_hash"))?
+            .extract()?;
+        let serial_number = asn1::BigInt::new(py_uint_to_big_endian_bytes(py, py_serial)?).unwrap();
+        ocsp::CertID::new_from_hash(
+            py,
+            issuer_name_hash,
+            issuer_key_hash,
+            serial_number,
+            py_hash,
+        )?
+    };
 
     let extensions = x509::common::encode_extensions(
         py,
-        builder.getattr("_extensions")?,
+        builder.getattr(crate::intern!(py, "_extensions"))?,
         extensions::encode_extension,
     )?;
     let reqs = [Request {
-        req_cert: ocsp::CertID::new(py, &py_cert, &py_issuer, py_hash)?,
+        req_cert,
         single_request_extensions: None,
     }];
     let ocsp_req = RawOCSPRequest {
@@ -203,7 +239,7 @@ fn create_ocsp_request(py: pyo3::Python<'_>, builder: &pyo3::PyAny) -> PyAsn1Res
         },
         optional_signature: None,
     };
-    let data = asn1::write_single(&ocsp_req);
+    let data = asn1::write_single(&ocsp_req)?;
     // TODO: extra copy as we round-trip through a slice
     load_der_ocsp_request(py, &data)
 }

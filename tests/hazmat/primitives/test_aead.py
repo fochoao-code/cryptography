@@ -499,6 +499,7 @@ class TestAESOCB3:
         vectors = []
         for f in [
             "rfc7253.txt",
+            "openssl.txt",
             "test-vector-1-nonce104.txt",
             "test-vector-1-nonce112.txt",
             "test-vector-1-nonce120.txt",
@@ -624,7 +625,17 @@ class TestAESSIV(object):
             aessiv.encrypt(FakeData(), None)
 
         with pytest.raises(OverflowError):
-            aessiv.encrypt(b"", [FakeData()])
+            aessiv.encrypt(b"irrelevant", [FakeData()])
+
+    def test_no_empty_encryption(self):
+        key = AESSIV.generate_key(256)
+        aessiv = AESSIV(key)
+
+        with pytest.raises(ValueError):
+            aessiv.encrypt(b"", None)
+
+        with pytest.raises(ValueError):
+            aessiv.decrypt(b"", None)
 
     def test_vectors(self, backend, subtests):
         vectors = load_vectors_from_file(

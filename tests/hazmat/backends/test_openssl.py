@@ -11,13 +11,12 @@ import textwrap
 
 import pytest
 
-from cryptography import utils, x509
 from cryptography.exceptions import InternalError, _Reasons
 from cryptography.hazmat.backends import default_backend
 from cryptography.hazmat.backends.openssl.backend import backend
 from cryptography.hazmat.backends.openssl.ec import _sn_to_elliptic_curve
 from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import dh, dsa, padding
+from cryptography.hazmat.primitives.asymmetric import dh, padding
 from cryptography.hazmat.primitives.ciphers import Cipher
 from cryptography.hazmat.primitives.ciphers.algorithms import AES
 from cryptography.hazmat.primitives.ciphers.modes import CBC
@@ -35,7 +34,6 @@ from ...utils import (
     load_vectors_from_file,
     raises_unsupported_algorithm,
 )
-from ...x509.test_x509 import _load_cert
 
 
 def skip_if_libre_ssl(openssl_version):
@@ -73,9 +71,20 @@ class TestOpenSSL:
         if it starts with OpenSSL or LibreSSL as that appears
         to be true for every OpenSSL-alike.
         """
-        assert backend.openssl_version_text().startswith(
-            ("OpenSSL", "LibreSSL", "BoringSSL")
-        )
+        version = backend.openssl_version_text()
+        assert version.startswith(("OpenSSL", "LibreSSL", "BoringSSL"))
+
+        # Verify the correspondence between these two. And do it in a way that
+        # ensures coverage.
+        if version.startswith("LibreSSL"):
+            assert backend._lib.CRYPTOGRAPHY_IS_LIBRESSL
+        if backend._lib.CRYPTOGRAPHY_IS_LIBRESSL:
+            assert version.startswith("LibreSSL")
+
+        if version.startswith("BoringSSL"):
+            assert backend._lib.CRYPTOGRAPHY_IS_BORINGSSL
+        if backend._lib.CRYPTOGRAPHY_IS_BORINGSSL:
+            assert version.startswith("BoringSSL")
 
     def test_openssl_version_number(self):
         assert backend.openssl_version_number() > 0
@@ -141,14 +150,6 @@ class TestOpenSSL:
         backend._lib.ERR_put_error(0, 0, 1, b"test_openssl.py", -1)
         with pytest.raises(InternalError):
             enc.finalize()
-
-    def test_large_key_size_on_new_openssl(self):
-        parameters = dsa.generate_parameters(2048, backend)
-        param_num = parameters.parameter_numbers()
-        assert param_num.p.bit_length() == 2048
-        parameters = dsa.generate_parameters(3072, backend)
-        param_num = parameters.parameter_numbers()
-        assert param_num.p.bit_length() == 3072
 
     def test_int_to_bn(self):
         value = (2**4242) - 4242
@@ -476,7 +477,9 @@ class TestOpenSSLSerializationWithOpenSSL:
     def test_unsupported_evp_pkey_type(self):
         key = backend._create_evp_pkey_gc()
         with raises_unsupported_algorithm(None):
-            backend._evp_pkey_to_private_key(key)
+            backend._evp_pkey_to_private_key(
+                key, unsafe_skip_rsa_key_validation=False
+            )
         with raises_unsupported_algorithm(None):
             backend._evp_pkey_to_public_key(key)
 
@@ -492,7 +495,9 @@ class TestOpenSSLSerializationWithOpenSSL:
                 ),
                 lambda pemfile: (
                     backend.load_pem_private_key(
-                        pemfile.read().encode(), password
+                        pemfile.read().encode(),
+                        password,
+                        unsafe_skip_rsa_key_validation=False,
                     )
                 ),
             )
@@ -596,55 +601,3 @@ class TestOpenSSLDHSerialization:
         )
         with pytest.raises(ValueError):
             loader_func(key_bytes, backend)
-
-
-def test_pyopenssl_cert_fallback():
-    cert = _load_cert(
-        os.path.join("x509", "cryptography.io.pem"),
-        x509.load_pem_x509_certificate,
-    )
-    x509_ossl = None
-    with pytest.warns(utils.CryptographyDeprecationWarning):
-        x509_ossl = cert._x509  # type:ignore[attr-defined]
-    assert x509_ossl is not None
-
-    from cryptography.hazmat.backends.openssl.x509 import _Certificate
-
-    with pytest.warns(utils.CryptographyDeprecationWarning):
-        _Certificate(backend, x509_ossl)
-
-
-def test_pyopenssl_csr_fallback():
-    cert = _load_cert(
-        os.path.join("x509", "requests", "rsa_sha256.pem"),
-        x509.load_pem_x509_csr,
-    )
-    req_ossl = None
-    with pytest.warns(utils.CryptographyDeprecationWarning):
-        req_ossl = cert._x509_req  # type:ignore[attr-defined]
-    assert req_ossl is not None
-
-    from cryptography.hazmat.backends.openssl.x509 import (
-        _CertificateSigningRequest,
-    )
-
-    with pytest.warns(utils.CryptographyDeprecationWarning):
-        _CertificateSigningRequest(backend, req_ossl)
-
-
-def test_pyopenssl_crl_fallback():
-    cert = _load_cert(
-        os.path.join("x509", "PKITS_data", "crls", "GoodCACRL.crl"),
-        x509.load_der_x509_crl,
-    )
-    req_crl = None
-    with pytest.warns(utils.CryptographyDeprecationWarning):
-        req_crl = cert._x509_crl  # type:ignore[attr-defined]
-    assert req_crl is not None
-
-    from cryptography.hazmat.backends.openssl.x509 import (
-        _CertificateRevocationList,
-    )
-
-    with pytest.warns(utils.CryptographyDeprecationWarning):
-        _CertificateRevocationList(backend, req_crl)

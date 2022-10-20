@@ -96,6 +96,7 @@ plaintext
 Poly
 pre
 precompute
+precomputed
 preprocessor
 preprocessors
 presentational
@@ -111,6 +112,7 @@ serializer
 Serializers
 SHA
 Solaris
+Sur
 syscall
 Tanja
 testability
